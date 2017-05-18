@@ -1,18 +1,38 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/freetype"
 	"github.com/jinzhu/configor"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
+	"github.com/lucasb-eyer/go-colorful"
+	"golang.org/x/image/font"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
+const avatarRoot string = "https://app.roll20.net"
+
 var Config = struct {
 	HistoryCount int `default:"1"`
+	Image        struct {
+		FontSize float64 `default:"16"`
+		Dpi      float64 `default:"144"`
+		FontFile string  `default:"Monofonto"`
+		Color    string  `default:"1fd6ef"`
+		Width    int     `default:"144"`
+		Height   int     `default:"144"`
+	}
 }{}
 
 type Roll struct {
@@ -53,6 +73,7 @@ var players map[string]string
 
 func main() {
 	configor.Load(&Config, "config.yml")
+	fmt.Println(Config)
 	e := echo.New()
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
@@ -81,6 +102,7 @@ func main() {
 		fmt.Println(
 			ioutil.WriteFile("roll.txt",
 				[]byte(message), 0644))
+		drawText(message)
 		return c.String(http.StatusOK, "OK")
 	})
 	e.Logger.Fatal(e.Start(":1323"))
@@ -131,4 +153,66 @@ func readRoll(req *http.Request) *Roll {
 func readPlayers(req *http.Request) {
 	decoder := json.NewDecoder(req.Body)
 	decoder.Decode(&players)
+}
+
+func drawText(text string) {
+
+	// Read the font data.
+	fontBytes, err := ioutil.ReadFile(Config.Image.FontFile + ".ttf")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	f, err := freetype.ParseFont(fontBytes)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// Initialize the context. 1fd6ef
+	cl, err := colorful.Hex(Config.Image.Color)
+	fmt.Println(cl.R, cl.G, cl.B)
+	fg := image.NewUniform(color.RGBA{uint8(cl.R * 255), uint8(cl.G * 255), uint8(cl.B * 255), 0xff})
+	bg := image.Transparent
+	rgba := image.NewRGBA(image.Rect(0, 0, Config.Image.Width, Config.Image.Height))
+	draw.Draw(rgba, rgba.Bounds(), bg, image.ZP, draw.Src)
+	c := freetype.NewContext()
+	c.SetDPI(Config.Image.Dpi)
+	c.SetFont(f)
+	c.SetFontSize(Config.Image.FontSize)
+	c.SetClip(rgba.Bounds())
+	c.SetDst(rgba)
+	c.SetSrc(fg)
+	c.SetHinting(font.HintingFull)
+
+	// Draw the text.
+	pt := freetype.Pt(10, 10+int(c.PointToFixed(Config.Image.FontSize)>>6))
+	for _, s := range strings.Split(text, "\n") {
+		_, err = c.DrawString(s, pt)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		pt.Y += c.PointToFixed(Config.Image.FontSize * 1)
+	}
+
+	// Save that RGBA image to disk.
+	outFile, err := os.Create("roll.png")
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	defer outFile.Close()
+	b := bufio.NewWriter(outFile)
+	err = png.Encode(b, rgba)
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	err = b.Flush()
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	fmt.Println("Wrote out.png OK.")
 }
