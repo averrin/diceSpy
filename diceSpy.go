@@ -3,12 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jinzhu/configor"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"io/ioutil"
 	"net/http"
 	"strings"
 )
+
+var Config = struct {
+	HistoryCount int `default:"1"`
+}{}
 
 type Roll struct {
 	Type  string `json:"type"`
@@ -31,6 +36,8 @@ type Roll struct {
 	OrigRoll   string
 }
 
+var rolls []*Roll
+
 type RollWrapper struct {
 	P string `json:"p"`
 	D struct {
@@ -45,6 +52,7 @@ type RollWrapper struct {
 var players map[string]string
 
 func main() {
+	configor.Load(&Config, "config.yml")
 	e := echo.New()
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
@@ -61,35 +69,48 @@ func main() {
 	e.POST("/roll", func(c echo.Context) error {
 		roll := readRoll(c.Request())
 		fmt.Println(roll)
-		results := roll.Rolls[0].Results
-		skill := strings.TrimSpace(roll.Rolls[len(roll.Rolls)-1].Text)
-		message := fmt.Sprintf("%v:", roll.Player)
-		if skill != "" {
-			message += fmt.Sprintf("\n%v", skill)
+		if len(rolls) == Config.HistoryCount {
+			rolls = rolls[1:]
 		}
-		message += "\n("
-		for i, d := range results {
-			if i < len(results)-1 {
-				message += fmt.Sprintf("%v, ", d.V)
-			} else {
-				message += fmt.Sprintf("%v", d.V)
-			}
+		rolls = append(rolls, roll)
+		message := ""
+		for _, r := range rolls {
+			message += renderRoll(r) + "\n\n"
 		}
-		message += ")"
 
-		if len(roll.Rolls) >= 3 {
-			mod := strings.TrimSpace(roll.Rolls[len(roll.Rolls)-2].Expr)
-			if mod != "" {
-				message += fmt.Sprintf(" %v", mod)
-			}
-		}
-		message += fmt.Sprintf(" = %v", roll.Total)
 		fmt.Println(
 			ioutil.WriteFile("roll.txt",
 				[]byte(message), 0644))
 		return c.String(http.StatusOK, "OK")
 	})
 	e.Logger.Fatal(e.Start(":1323"))
+}
+
+func renderRoll(roll *Roll) string {
+	results := roll.Rolls[0].Results
+	skill := strings.TrimSpace(roll.Rolls[len(roll.Rolls)-1].Text)
+	message := fmt.Sprintf("%v:", roll.Player)
+	if skill != "" {
+		message += fmt.Sprintf("\n%v", skill)
+	}
+	message += "\n("
+	for i, d := range results {
+		if i < len(results)-1 {
+			message += fmt.Sprintf("%v, ", d.V)
+		} else {
+			message += fmt.Sprintf("%v", d.V)
+		}
+	}
+	message += ")"
+
+	if len(roll.Rolls) >= 3 {
+		mod := strings.TrimSpace(roll.Rolls[len(roll.Rolls)-2].Expr)
+		if mod != "" {
+			message += fmt.Sprintf(" %v", mod)
+		}
+	}
+	message += fmt.Sprintf(" = %v", roll.Total)
+	return message
 }
 
 func readRoll(req *http.Request) *Roll {
