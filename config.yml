@@ -1,8 +1,9 @@
-historycount: 3
+historycount: 2
 image:
   fontsize: 16
-  dpi: 144
+  dpi: 108
   fontfile: Monofonto
   color: '#1FD6EF'
   width: 600
   height: 300
+  avatarsize: 48
