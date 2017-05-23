@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/lucasb-eyer/go-colorful"
+	"github.com/nfnt/resize"
 	"golang.org/x/image/font"
 	"image"
 	"image/color"
@@ -95,7 +96,7 @@ func main() {
 		configor.Load(&Config, "config.yml")
 		roll := readRoll(c.Request())
 		fmt.Println(roll)
-		if len(rolls) == Config.HistoryCount {
+		for len(rolls) >= Config.HistoryCount {
 			rolls = rolls[1:]
 		}
 		rolls = append(rolls, roll)
@@ -196,7 +197,8 @@ func getAvatar(id string, size int) image.Image {
 		fmt.Println(filepath)
 		panic(err)
 	}
-	return src
+	img := resize.Resize(uint(Config.Image.AvatarSize), 0, src, resize.Lanczos3)
+	return img
 }
 
 func drawRolls(rolls []*Roll) {
@@ -242,16 +244,19 @@ func drawRolls(rolls []*Roll) {
 			pt.Y += c.PointToFixed(Config.Image.FontSize * 1)
 		}
 	}
-	offset := 0
 	lh := int(Config.Image.FontSize)
+	offset := lh
 	for _, roll := range rolls {
 		tokens := strings.Split(roll.Avatar, "/")
 		avatar := getAvatar(tokens[len(tokens)-2], Config.Image.AvatarSize)
 		apt := image.Point{0, 0}
-		r := image.Rect(0, offset+lh, avatar.Bounds().Dx(), offset+avatar.Bounds().Dy()+lh)
+		r := image.Rect(0, offset, avatar.Bounds().Dx(), offset+avatar.Bounds().Dy()+lh)
 		fmt.Println(apt, r, avatar.Bounds(), rgba.Bounds())
 		draw.Draw(rgba, r, avatar, apt, draw.Src)
-		offset += int(Config.Image.FontSize * 6) //+ avatar.Bounds().Dy()
+
+		text := renderRoll(roll)
+		lines := strings.Split(text, "\n")
+		offset += lh * (len(lines) * 2)
 	}
 
 	// Save that RGBA image to disk.
