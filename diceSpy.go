@@ -110,6 +110,7 @@ func main() {
 		drawRolls(rolls)
 		return c.String(http.StatusOK, "OK")
 	})
+	fmt.Println("Open WebInspector console and type $.getScript('http://127.0.0.1:1323/')")
 	e.Logger.Fatal(e.Start(":1323"))
 }
 
