@@ -20,3 +20,8 @@ function getPlayers() {
 getPlayers();
 injectReporter();
 console.info('DiceSpy injected.');
+let c = $('#textchat .content');
+let m = $('<div class="message private whisper"></div>');
+m.append($('<div class="spacer"></div>'));
+m.append($('<p>DiceSpy injected.</p>'));
+c.append(m);
