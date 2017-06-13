@@ -1,27 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/golang/freetype"
 	"github.com/jinzhu/configor"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
-	"github.com/lucasb-eyer/go-colorful"
-	"github.com/nfnt/resize"
-	"golang.org/x/image/font"
-	"image"
-	"image/color"
-	"image/draw"
-	_ "image/jpeg"
-	"image/png"
 	"io"
 	"io/ioutil"
-	"log"
+	// "log"
 	"net/http"
-	"os"
 	"strings"
+	"text/template"
 )
 
 const avatarRoot string = "https://app.roll20.net"
@@ -59,6 +49,11 @@ type Roll struct {
 	Player     string
 	Avatar     string
 	OrigRoll   string
+	Message    string
+	Skill      string
+	Results    []struct {
+		V int `json:"v"`
+	}
 }
 
 var rolls []*Roll
@@ -77,14 +72,31 @@ type RollWrapper struct {
 
 var players map[string]string
 
+type Template struct {
+	templates *template.Template
+}
+
+func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	return t.templates.ExecuteTemplate(w, name, data)
+}
+
+func result(c echo.Context) error {
+	return c.Render(http.StatusOK, c.Param("name"), rolls)
+}
+
 func main() {
 	configor.Load(&Config, "config.yml")
+	t := &Template{
+		templates: template.Must(template.ParseGlob("templates/*.html")),
+	}
 	e := echo.New()
+	e.Renderer = t
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{echo.GET, echo.PUT, echo.POST, echo.DELETE},
 	}))
-	e.File("/", "payload.js")
+	e.File("/script", "payload.js")
+	e.GET("/display/:name", result)
 
 	e.POST("/players", func(c echo.Context) error {
 		readPlayers(c.Request())
@@ -102,23 +114,31 @@ func main() {
 		rolls = append(rolls, roll)
 		message := ""
 		for _, r := range rolls {
-			message += renderRoll(r) + "\n\n"
+			r.Avatar = avatarRoot + r.Avatar
+			r.Message = renderRoll(r)
+			message += r.Message + "\n\n"
 		}
 
 		ioutil.WriteFile("roll.txt",
 			[]byte(message), 0644)
-		drawRolls(rolls)
 		return c.String(http.StatusOK, "OK")
 	})
+	fmt.Println("-------")
+	fmt.Println("")
+	fmt.Println("Exec `$.getScript('http://127.0.0.1:1323/script');` in roll20.net WebInspector console")
+	fmt.Println("Use `http://127.0.0.1:1323/display/basic` as OBS BrowserSource")
+	fmt.Println("")
+	fmt.Println("-------")
 	e.Logger.Fatal(e.Start(":1323"))
 }
 
 func renderRoll(roll *Roll) string {
 	results := roll.Rolls[0].Results
-	skill := strings.TrimSpace(roll.Rolls[len(roll.Rolls)-1].Text)
+	roll.Results = results
+	roll.Skill = strings.TrimSpace(roll.Rolls[len(roll.Rolls)-1].Text)
 	message := fmt.Sprintf("%v:", roll.Player)
-	if skill != "" {
-		message += fmt.Sprintf("\n%v", skill)
+	if roll.Skill != "" {
+		message += fmt.Sprintf("\n%v", roll.Skill)
 	}
 	message += "\n("
 	for i, d := range results {
@@ -159,123 +179,4 @@ func readRoll(req *http.Request) *Roll {
 func readPlayers(req *http.Request) {
 	decoder := json.NewDecoder(req.Body)
 	decoder.Decode(&players)
-}
-
-func getAvatar(id string, size int) image.Image {
-	filepath := fmt.Sprintf("avatars/%v-%v.jpg", id, size)
-	if _, err := os.Stat(filepath); os.IsNotExist(err) {
-		url := fmt.Sprintf("%s/users/avatar/%v/%v", avatarRoot, id, size)
-		fmt.Println(url)
-		output, err := os.Create(filepath)
-		if err != nil {
-			fmt.Println("Error while creating", filepath, "-", err)
-			return nil
-		}
-		defer output.Close()
-
-		response, err := http.Get(url)
-		if err != nil {
-			fmt.Println("Error while downloading", url, "-", err)
-			return nil
-		}
-		defer response.Body.Close()
-
-		_, err = io.Copy(output, response.Body)
-		if err != nil {
-			fmt.Println("Error while downloading", url, "-", err)
-			return nil
-		}
-	}
-
-	infile, err := os.Open(filepath)
-	if err != nil {
-		panic(err)
-	}
-	defer infile.Close()
-	src, _, err := image.Decode(infile)
-	if err != nil {
-		fmt.Println(filepath)
-		panic(err)
-	}
-	img := resize.Resize(uint(Config.Image.AvatarSize), 0, src, resize.Lanczos3)
-	return img
-}
-
-func drawRolls(rolls []*Roll) {
-
-	// Read the font data.
-	fontBytes, err := ioutil.ReadFile(Config.Image.FontFile + ".ttf")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	f, err := freetype.ParseFont(fontBytes)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// Initialize the context. 1fd6ef
-	cl, err := colorful.Hex(Config.Image.Color)
-	fg := image.NewUniform(color.RGBA{uint8(cl.R * 255), uint8(cl.G * 255), uint8(cl.B * 255), 0xff})
-	bg := image.Transparent
-	rgba := image.NewRGBA(image.Rect(0, 0, Config.Image.Width, Config.Image.Height))
-	draw.Draw(rgba, rgba.Bounds(), bg, image.ZP, draw.Src)
-	c := freetype.NewContext()
-	c.SetDPI(Config.Image.Dpi)
-	c.SetFont(f)
-	c.SetFontSize(Config.Image.FontSize)
-	c.SetClip(rgba.Bounds())
-	c.SetDst(rgba)
-	c.SetSrc(fg)
-	c.SetHinting(font.HintingFull)
-
-	// Draw the text.
-	pt := freetype.Pt(Config.Image.AvatarSize+10, 10+int(c.PointToFixed(Config.Image.FontSize)>>6))
-	for _, roll := range rolls {
-		text := renderRoll(roll) + "\n"
-		lines := strings.Split(text, "\n")
-		for _, s := range lines {
-			_, err = c.DrawString(s, pt)
-			if err != nil {
-				log.Println(err)
-				return
-			}
-			pt.Y += c.PointToFixed(Config.Image.FontSize * 1)
-		}
-	}
-	lh := int(Config.Image.FontSize)
-	offset := lh
-	for _, roll := range rolls {
-		tokens := strings.Split(roll.Avatar, "/")
-		avatar := getAvatar(tokens[len(tokens)-2], Config.Image.AvatarSize)
-		apt := image.Point{0, 0}
-		r := image.Rect(0, offset, avatar.Bounds().Dx(), offset+avatar.Bounds().Dy()+lh)
-		fmt.Println(apt, r, avatar.Bounds(), rgba.Bounds())
-		draw.Draw(rgba, r, avatar, apt, draw.Src)
-
-		text := renderRoll(roll)
-		lines := strings.Split(text, "\n")
-		offset += lh * (len(lines) * 2)
-	}
-
-	// Save that RGBA image to disk.
-	outFile, err := os.Create("roll.png")
-	if err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
-	defer outFile.Close()
-	b := bufio.NewWriter(outFile)
-	err = png.Encode(b, rgba)
-	if err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
-	err = b.Flush()
-	if err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
-	fmt.Println("Wrote out.png OK.")
 }

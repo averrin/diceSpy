@@ -10,6 +10,5 @@ Roll20 dice rolls transfer to OBS
 * Run diceSpy.exe
 * On roll20 open WebInspector Console (`f12`)
 * Make roll by every player
-* Type `$.getScript('http://127.0.0.1:1323/')` and press enter
-* Profit. Now your (and other players) last roll will be recorded in txt file near exe
-* You can use this file as OBS source for displaying text
+* Type `$.getScript('http://127.0.0.1:1323/script')` and press enter
+* Use `http://127.0.0.1:1323/display/basic` as OBS BrowserSource 

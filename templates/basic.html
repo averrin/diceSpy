@@ -1,0 +1,33 @@
+{{define "basic"}}
+<style>
+ content {
+     background: #eee;
+     display: block;
+ }
+</style>
+<script>
+ setTimeout(function(){
+     window.location.reload();
+ }, 1000);
+</script>
+
+<content>
+  <ul>
+    {{range $index, $element := .}}
+    <li>
+      {{.Player}}: <br>
+      {{.Skill}} <br>
+      <b>(</b>
+      {{$results := .Results}}
+      {{ range $index, $element := .Results}}
+          {{if $index}},{{end}}
+          {{$element.V}}
+      {{end}}
+      <b>)</b>
+      = <b>{{.Total}}</b>
+    </li>
+    {{end}}
+  </ul>
+</content>
+
+{{end}}
