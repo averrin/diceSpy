@@ -123,12 +123,14 @@ func main() {
 			[]byte(message), 0644)
 		return c.String(http.StatusOK, "OK")
 	})
+	fmt.Println("")
 	fmt.Println("-------")
 	fmt.Println("")
 	fmt.Println("Exec `$.getScript('http://127.0.0.1:1323/script');` in roll20.net WebInspector console")
 	fmt.Println("Use `http://127.0.0.1:1323/display/basic` as OBS BrowserSource")
 	fmt.Println("")
 	fmt.Println("-------")
+	fmt.Println("")
 	e.Logger.Fatal(e.Start(":1323"))
 }
 
