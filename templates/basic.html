@@ -1,30 +1,49 @@
 {{define "basic"}}
 <style>
  content {
-     background: #eee;
+     background: #fff;
      display: block;
  }
+ .player {
+     color: green;
+ }
+ .description {
+     font-style: italic;
+ }
+ .result {
+     color: blue;
+ }
+ .total {
+     color: green;
+     font-weight: bold;
+ }
+ .dice {
+    width: 25px;
+    margin-bottom: -7px;
+ }
+ .avatar {
+    width: 25px;
+    margin-bottom: -7px;
+ }
 </style>
-<script>
- setTimeout(function(){
-     window.location.reload();
- }, 1000);
-</script>
+<script src="/templates/updater.js"></script>
 
 <content>
   <ul>
     {{range $index, $element := .}}
     <li>
-      {{.Player}}: <br>
-      {{.Skill}} <br>
+      <img alt="" src="{{.Avatar}}" class="avatar"/>
+      <span class="player">{{.Player}}</span>: <br>
+      <img alt="" src="/templates/dice.png" class="dice"/>
+      <span class="description">{{.Skill}}</span> <br>
       <b>(</b>
       {{$results := .Results}}
       {{ range $index, $element := .Results}}
           {{if $index}},{{end}}
-          {{$element.V}}
+          <span class="result">{{$element.V}}</span>
       {{end}}
-      <b>)</b>
-      = <b>{{.Total}}</b>
+      <b>)</b> {{.Mod}}
+      = <span class="total">{{.Total}}</span>
     </li>
     {{end}}
   </ul>

@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	// "log"
+	"golang.org/x/net/websocket"
 	"net/http"
 	"strings"
 	"text/template"
@@ -51,6 +52,7 @@ type Roll struct {
 	OrigRoll   string
 	Message    string
 	Skill      string
+	Mod        string
 	Results    []struct {
 		V int `json:"v"`
 	}
@@ -84,6 +86,19 @@ func result(c echo.Context) error {
 	return c.Render(http.StatusOK, c.Param("name"), rolls)
 }
 
+var socket *websocket.Conn
+
+func wsHandler(c echo.Context) error {
+	websocket.Handler(func(ws *websocket.Conn) {
+		socket = ws
+		defer ws.Close()
+		for {
+			websocket.Message.Receive(ws, nil)
+		}
+	}).ServeHTTP(c.Response(), c.Request())
+	return nil
+}
+
 func main() {
 	configor.Load(&Config, "config.yml")
 	t := &Template{
@@ -97,6 +112,8 @@ func main() {
 	}))
 	e.File("/script", "payload.js")
 	e.GET("/display/:name", result)
+	e.GET("/ws", wsHandler)
+	e.Static("/templates", "templates")
 
 	e.POST("/players", func(c echo.Context) error {
 		readPlayers(c.Request())
@@ -114,13 +131,16 @@ func main() {
 		rolls = append(rolls, roll)
 		message := ""
 		for _, r := range rolls {
-			r.Avatar = avatarRoot + r.Avatar
 			r.Message = renderRoll(r)
 			message += r.Message + "\n\n"
 		}
 
 		ioutil.WriteFile("roll.txt",
 			[]byte(message), 0644)
+
+		if socket != nil {
+			websocket.Message.Send(socket, "Hello, Client!")
+		}
 		return c.String(http.StatusOK, "OK")
 	})
 	fmt.Println("")
@@ -153,9 +173,9 @@ func renderRoll(roll *Roll) string {
 	message += ")"
 
 	if len(roll.Rolls) >= 3 {
-		mod := strings.TrimSpace(roll.Rolls[len(roll.Rolls)-2].Expr)
-		if mod != "" {
-			message += fmt.Sprintf(" %v", mod)
+		roll.Mod = strings.TrimSpace(roll.Rolls[len(roll.Rolls)-2].Expr)
+		if roll.Mod != "" {
+			message += fmt.Sprintf(" %v", roll.Mod)
 		}
 	}
 	message += fmt.Sprintf(" = %v", roll.Total)
@@ -174,7 +194,8 @@ func readRoll(req *http.Request) *Roll {
 	err = json.Unmarshal([]byte(rw.D.Content), &r)
 	r.Player = players[rw.D.Playerid]
 	r.OrigRoll = rw.D.OrigRoll
-	r.Avatar = rw.D.Avatar
+	r.Avatar = avatarRoot + rw.D.Avatar
+
 	return &r
 }
 
