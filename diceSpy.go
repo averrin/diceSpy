@@ -17,18 +17,11 @@ import (
 
 const avatarRoot string = "https://app.roll20.net"
 
-var Config = struct {
+type ConfigStruct struct {
 	HistoryCount int `default:"1"`
-	Image        struct {
-		AvatarSize int     `default:"30"`
-		FontSize   float64 `default:"16"`
-		Dpi        float64 `default:"144"`
-		FontFile   string  `default:"Monofonto"`
-		Color      string  `default:"1fd6ef"`
-		Width      int     `default:"144"`
-		Height     int     `default:"144"`
-	}
-}{}
+}
+
+var Config = ConfigStruct{}
 
 type Roll struct {
 	Type  string `json:"type"`
@@ -83,7 +76,10 @@ func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Con
 }
 
 func result(c echo.Context) error {
-	return c.Render(http.StatusOK, c.Param("name"), rolls)
+	return c.Render(http.StatusOK, c.Param("name"), struct {
+		Rolls  []*Roll
+		Config ConfigStruct
+	}{rolls, Config})
 }
 
 var socket *websocket.Conn
@@ -194,7 +190,7 @@ func readRoll(req *http.Request) *Roll {
 	err = json.Unmarshal([]byte(rw.D.Content), &r)
 	r.Player = players[rw.D.Playerid]
 	r.OrigRoll = rw.D.OrigRoll
-	r.Avatar = avatarRoot + rw.D.Avatar
+	r.Avatar = fmt.Sprintf("%v/users/avatar/%v/200", avatarRoot, strings.Split(rw.D.Avatar, "/")[3])
 
 	return &r
 }
